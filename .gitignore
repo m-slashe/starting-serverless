@@ -1,0 +1,9 @@
+terraform/terraform.tfstate.backup
+terraform/terraform.tfstate
+terraform/.terraform.lock.hcl
+terraform/.terraform
+hello_world.zip
+myservice.zip
+cloudformation-template-*.*
+samconfig.toml
+.serverless
