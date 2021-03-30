@@ -1,0 +1,104 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: Example sqs fifo with fargate
+
+Globals:
+  Function:
+    Timeout: 30
+
+Parameters:
+  Subnets:
+    Type: String
+  SecurityGroups:
+    Type: String
+
+Resources:
+  ECSCluster:
+    Type: AWS::ECS::Cluster
+  DockerRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: task_fargate
+  DockerLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      RetentionInDays: 30
+  TaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: "sts:AssumeRole"
+      ManagedPolicyArns:
+        - "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
+  TaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: "sts:AssumeRole"
+      ManagedPolicyArns:
+        - "arn:aws:iam::aws:policy/service-role/AWSLambdaSQSQueueExecutionRole"
+        - "arn:aws:iam::aws:policy/AmazonSQSFullAccess"
+  DockerTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      RequiresCompatibilities:
+        - FARGATE
+      NetworkMode: awsvpc
+      Cpu: "256"
+      Memory: "512"
+      ExecutionRoleArn: !GetAtt TaskExecutionRole.Arn
+      TaskRoleArn: !Ref TaskRole
+      ContainerDefinitions:
+        - Name: !Ref DockerRepository
+          Image: !Sub
+            - "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${RepositoryName}"
+            - { RepositoryName: !Ref DockerRepository }
+          Environment:
+            - Name: REGION_NAME
+              Value: !Ref AWS::Region
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref DockerLogGroup
+              awslogs-region: !Ref "AWS::Region"
+              awslogs-stream-prefix: task
+  TaskStartFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: start_task
+      Handler: start_task.lambda_handler
+      Runtime: python3.7
+      Policies:
+        - AmazonSQSFullAccess
+        - EcsRunTaskPolicy:
+            TaskDefinition: !Select [1, !Split ["/", !Ref DockerTaskDefinition]]
+        - Version: "2012-10-17"
+          Statement:
+            - Action: iam:PassRole
+              Effect: Allow
+              Resource: "*"
+              Condition:
+                StringLike:
+                  iam:PassedToService: ecs-tasks.amazonaws.com
+        - ResourceGroupsandTagEditorReadOnlyAccess
+      Environment:
+        Variables:
+          CLUSTER_TASK: !Ref ECSCluster
+          TASK_DEFINITION: !Ref DockerTaskDefinition
+          CONTAINER_NAME: !Ref DockerRepository
+          SUBNETS: !Ref Subnets
+          SECURITY_GROUPS: !Ref SecurityGroups
+      Events:
+        StartTask:
+          Type: Api
+          Properties:
+            Path: /start
+            Method: post
