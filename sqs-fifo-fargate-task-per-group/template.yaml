@@ -2,10 +2,6 @@ AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
 Description: Example sqs fifo with fargate
 
-Globals:
-  Function:
-    Timeout: 30
-
 Parameters:
   Subnets:
     Type: String
@@ -13,6 +9,11 @@ Parameters:
     Type: String
 
 Resources:
+  TaskQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      FifoQueue: True
+      ContentBasedDeduplication: True
   ECSCluster:
     Type: AWS::ECS::Cluster
   DockerRepository:
@@ -44,7 +45,6 @@ Resources:
               Service: ecs-tasks.amazonaws.com
             Action: "sts:AssumeRole"
       ManagedPolicyArns:
-        - "arn:aws:iam::aws:policy/service-role/AWSLambdaSQSQueueExecutionRole"
         - "arn:aws:iam::aws:policy/AmazonSQSFullAccess"
   DockerTaskDefinition:
     Type: AWS::ECS::TaskDefinition
@@ -76,6 +76,7 @@ Resources:
       CodeUri: start_task
       Handler: start_task.lambda_handler
       Runtime: python3.7
+      Timeout: 30
       Policies:
         - AmazonSQSFullAccess
         - EcsRunTaskPolicy:
@@ -96,6 +97,7 @@ Resources:
           CONTAINER_NAME: !Ref DockerRepository
           SUBNETS: !Ref Subnets
           SECURITY_GROUPS: !Ref SecurityGroups
+          SQS_FIFO_URL: !Ref TaskQueue
       Events:
         StartTask:
           Type: Api

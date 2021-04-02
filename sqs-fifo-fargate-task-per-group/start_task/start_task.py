@@ -6,13 +6,11 @@ import traceback
 
 ecs_client = boto3.client('ecs')
 sqs_resource = boto3.resource('sqs')
-sqs_client = boto3.client('sqs')
 tag_client = boto3.client('resourcegroupstaggingapi')
 
 
 def lambda_handler(event, context):
     try:
-
         request_body = json.loads(event['body'])
 
         tag_group_id_name = 'SQS_GROUP_ID'
@@ -25,22 +23,9 @@ def lambda_handler(event, context):
             ResourceTypeFilters=['ecs:task']
         )
 
-        queue_url = ''
-        queue_name = f"TaskQueue_{group_id}.fifo"
-        if len(tag_response['ResourceTagMappingList']) == 0:
-            response_sqs = sqs_client.create_queue(
-                QueueName=queue_name,
-                Attributes={
-                    'FifoQueue': 'true',
-                    'ContentBasedDeduplication': 'true'
-                }
-            )
-            queue_url = response_sqs['QueueUrl']
-        else:
-            response_sqs = sqs_client.get_queue_url(
-                QueueName=queue_name
-            )
-            queue_url = response_sqs['QueueUrl']
+        has_a_running_task = len(tag_response['ResourceTagMappingList']) == 0
+
+        queue_url = os.environ['SQS_FIFO_URL']
 
         queue = sqs_resource.Queue(queue_url)
 
@@ -52,7 +37,7 @@ def lambda_handler(event, context):
             MessageGroupId=group_id
         )
 
-        if len(tag_response['ResourceTagMappingList']) == 0:
+        if has_a_running_task:
             ecs_client.run_task(
                 cluster=os.environ['CLUSTER_TASK'],
                 launchType='FARGATE',
@@ -83,7 +68,7 @@ def lambda_handler(event, context):
 
         return {
             "statusCode": 200,
-            "body": json.dumps({'message': 'Task Iniciada com sucesso!!!'})
+            "body": json.dumps({'message': 'Task initialized with success!!!'})
         }
     except Exception as e:
         traceback.print_exc()

@@ -1,6 +1,7 @@
 import boto3
 import os
 import json
+import time
 
 sqs_client = boto3.resource('sqs', region_name=os.environ['REGION_NAME'])
 
@@ -11,7 +12,7 @@ def handler():
     while True:
         messages = queue.receive_messages(
             MaxNumberOfMessages=1,
-            VisibilityTimeout=30
+            VisibilityTimeout=60
         )
         has_message = len(messages) != 0
         if not has_message:
@@ -19,9 +20,9 @@ def handler():
 
         for message in messages:
             value = json.loads(message.body)
+            time.sleep(10)
             print(value)
             message.delete()
-    queue.delete()
 
 
 if __name__ == '__main__':
