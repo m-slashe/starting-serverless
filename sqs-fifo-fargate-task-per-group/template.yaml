@@ -78,7 +78,8 @@ Resources:
       Runtime: python3.7
       Timeout: 30
       Policies:
-        - AmazonSQSFullAccess
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt TaskQueue.QueueName
         - EcsRunTaskPolicy:
             TaskDefinition: !Select [1, !Split ["/", !Ref DockerTaskDefinition]]
         - Version: "2012-10-17"
